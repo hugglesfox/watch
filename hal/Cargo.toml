@@ -1,0 +1,16 @@
+[package]
+name = "watch-hal"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hayley Hughes <hayley@foxes.systems>"]
+description = "A hardware abstraction library for watch"
+repository = "https://github.com/hugglesfox/watch"
+licence = "GPL-2.0-or-later"
+
+[dependencies]
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.3"
+once_cell = { version = "1.18.0", default-features = false, features = ["critical-section"] }
+panic-halt = "0.2.0"
+stm32l0 = { version = "0.15.1", features = ["stm32l0x3"] }
+
