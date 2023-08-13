@@ -1,6 +1,6 @@
 use crate::system::System;
 use core::marker::PhantomData;
-use stm32l0::stm32l0x3::RTC;
+use stm32l0::stm32l0x3::{EXTI, RTC};
 
 use stm32l0::stm32l0x3::rtc::tr::R as TR_R;
 
@@ -24,13 +24,17 @@ pub struct Run;
 /// The RTC has two states, run mode and initialisation (init) mode. While in run mode, the RTC
 /// measures time however the time registers are read only. While in init mode, the RTC is stopped
 /// but the time registers become writeable, allowing the time to be set. Moving between init mode
-/// and run mode can be done using the [`Rtc<Run>::init()`] and [`Rtc<Init>::run()`] methods respectively.
+/// and run mode can be done using the [`Rtc<Run>::init()`] and [`Rtc<Init>::run()`] methods
+/// respectively.
+///
+/// The RTC also manages a timer which wakes up the core every second. This can be used for
+/// updating the display.
 ///
 /// Note that the RTC uses 24 hour notation.
 pub struct Rtc<S>(RTC, PhantomData<S>);
 
 impl Rtc<Run> {
-    pub fn configure(rtc: RTC, sys: &mut System) -> Rtc<Run> {
+    pub fn configure(rtc: RTC, sys: &mut System, exti: &mut EXTI) -> Rtc<Run> {
         // Unlock RTC registers
         rtc.wpr.write(|w| w.key().bits(0xCA));
         rtc.wpr.write(|w| w.key().bits(0x53));
@@ -46,7 +50,15 @@ impl Rtc<Run> {
         // TODO: create a feature flag to enable/disable
         rtc.cr.modify(|_, w| w.coe().enabled());
 
-        sys.enable_rtc();
+        // Configure rtc wakeup timer event
+        //
+        // * Enable rising edge trigger
+        // * Unmask wakeup event
+        // * Enable wakeup timer interrupt
+        // * Enable wakeup timer
+        exti.rtsr.modify(|_, w| w.rt20().enabled());
+        exti.emr.modify(|_, w| w.em20().unmasked());
+        rtc.cr.modify(|_, w| w.wutie().enabled().wute().enabled());
 
         sys.enable_rtc();
 
@@ -84,6 +96,18 @@ impl Rtc<Run> {
             seconds_tens: tr.st().bits(),
             seconds_units: tr.su().bits(),
         }
+    }
+
+    /// Check the wake up timer interrupt flag
+    pub fn isr_wakeup(&mut self) -> bool {
+        let is_wakeup = self.0.isr.read().wutf().bit_is_set();
+
+        if is_wakeup {
+            // Clear the interrupt flag
+            self.0.isr.modify(|_, w| w.wutf().clear_bit());
+        }
+
+        is_wakeup
     }
 
     /// Enter initialisation mode
