@@ -18,8 +18,6 @@
 
 #![no_std]
 
-extern crate panic_halt;
-
 pub mod adc;
 pub mod buzzer;
 pub mod lcd;
@@ -31,3 +29,5 @@ pub use buzzer::Buzzer;
 pub use lcd::Lcd;
 pub use rtc::Rtc;
 pub use system::System;
+
+pub use stm32l0::stm32l0x3 as pac;

@@ -1,5 +1,5 @@
-use core::marker::PhantomData;
 use crate::system::{System, CLK_FREQ};
+use core::marker::PhantomData;
 use stm32l0::stm32l0x3::{GPIOA, TIM2};
 
 // Timer prescaler value to give a 1 Hz tick
@@ -20,8 +20,8 @@ pub const fn ccr_from_duty(duty: usize, aar: u16) -> u16 {
     (duty as u16 * aar / 100) as u16
 }
 
-struct Running;
-struct Stopped;
+pub struct Running;
+pub struct Stopped;
 
 /// Pezio buzzer
 ///
@@ -51,16 +51,16 @@ impl Buzzer<Stopped> {
     }
 
     /// Start the buzzer
-    pub fn start(self) -> Buzzer<Running>{
-       Buzzer::from(self)
+    pub fn start(self) -> Buzzer<Running> {
+        Buzzer::from(self)
     }
 }
 
 impl Buzzer<Running> {
-   /// Stop the buzzer
-   pub fn stop(self) -> Buzzer<Stopped> {
-       Buzzer::from(self)
-   }
+    /// Stop the buzzer
+    pub fn stop(self) -> Buzzer<Stopped> {
+        Buzzer::from(self)
+    }
 }
 
 impl From<Buzzer<Running>> for Buzzer<Stopped> {

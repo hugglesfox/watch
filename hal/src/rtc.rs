@@ -16,8 +16,8 @@ pub struct Time {
     pub seconds_units: u8,
 }
 
-struct Init;
-struct Run;
+pub struct Init;
+pub struct Run;
 
 /// # Real time clock
 ///
@@ -43,12 +43,12 @@ impl Rtc<Run> {
             .write(|w| w.bypshad().bypass_shadow_reg().wucksel().clock_spare());
 
         // Enable 512 Hz calibration output on PC13
+        // TODO: create a feature flag to enable/disable
         rtc.cr.modify(|_, w| w.coe().enabled());
 
         sys.enable_rtc();
 
-        // Enter initialisation mode
-        rtc.isr.modify(|_, w| w.init().init_mode());
+        sys.enable_rtc();
 
         Self(rtc, PhantomData)
     }

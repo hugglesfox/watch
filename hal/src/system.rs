@@ -8,6 +8,7 @@ pub const CLK_FREQ: usize = 65536;
 ///
 /// The general clock and power configuration is such that to provide ultra low power operation
 ///
+/// * Enable SLEEPONEXIT
 /// * The system clock (MSI) is set to range 0 (~65.536 kHz)
 /// * The voltage regulator is set to range 3 (1.2v)
 ///

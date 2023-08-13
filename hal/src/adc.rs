@@ -39,8 +39,8 @@ impl AdcMeasurement {
     }
 }
 
-struct Enabled;
-struct Disabled;
+pub struct Enabled;
+pub struct Disabled;
 
 /// # Analogue to digital converter (ADC)
 ///
