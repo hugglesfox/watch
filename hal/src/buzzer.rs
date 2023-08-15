@@ -20,7 +20,10 @@ pub const fn ccr_from_duty(duty: usize, aar: u16) -> u16 {
     (duty as u16 * aar / 100) as u16
 }
 
+/// Buzzer running state
 pub struct Running;
+
+/// Buzzer stopped state
 pub struct Stopped;
 
 /// Pezio buzzer
@@ -29,6 +32,7 @@ pub struct Stopped;
 pub struct Buzzer<S>(TIM2, PhantomData<S>);
 
 impl Buzzer<Stopped> {
+    /// Configure the buzzer
     pub fn configure(timer: TIM2, sys: &mut System, gpio: &mut GPIOA) -> Buzzer<Stopped> {
         sys.enable_tim2_clk();
 

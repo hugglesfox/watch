@@ -1,3 +1,23 @@
+//! # Real time clock (RTC)
+//!
+//! The real time clock uses the low frequency external oscillator in order to measure wall time.
+//!
+//! Note that the RTC uses 24 hour notation.
+//!
+//! ## Wake up timer
+//!
+//! The RTC manages a wakeup timer which wakes up the core every second. This can be used to
+//! wake up the core in order to update the display.
+//!
+//! ## Alarms
+//!
+//! TODO
+//!
+//! ## Backup register
+//!
+//! The RTC contains a register which retains it's contents as long as the RTC is powered; meaning
+//! that it survives a reset. In the watch backup register is used to store the ADC calibration.
+
 use crate::system::System;
 use core::marker::PhantomData;
 use stm32l0::stm32l0x3::{EXTI, RTC};
@@ -6,34 +26,41 @@ use stm32l0::stm32l0x3::rtc::tr::R as TR_R;
 
 /// Binary coded decimal represenation of the time
 pub struct Time {
+    /// hour tens digit (0-2)
     pub hour_tens: u8,
+    /// hour units digit (0-9)
     pub hour_units: u8,
 
+    /// minute tens digit (0-5)
     pub minute_tens: u8,
+    /// minute units digit (0-9)
     pub minute_units: u8,
 
+    /// seconds tens digit (0-5)
     pub seconds_tens: u8,
+    /// seconds units digit (0-9)
     pub seconds_units: u8,
 }
 
+/// RTC initialisation mode
+///
+/// RTC is stopped; the time registers become writeable allowing the time to be set.
 pub struct Init;
+
+/// RTC run mode
+///
+/// RTC is measuring time; the time registers are read only.
 pub struct Run;
 
-/// # Real time clock
+/// # RTC
 ///
-/// The RTC has two states, run mode and initialisation (init) mode. While in run mode, the RTC
-/// measures time however the time registers are read only. While in init mode, the RTC is stopped
-/// but the time registers become writeable, allowing the time to be set. Moving between init mode
-/// and run mode can be done using the [`Rtc<Run>::init()`] and [`Rtc<Init>::run()`] methods
-/// respectively.
+/// The RTC has two states, [`Run`] mode and [`Init`] mode.
 ///
-/// The RTC also manages a timer which wakes up the core every second. This can be used for
-/// updating the display.
-///
-/// Note that the RTC uses 24 hour notation.
+/// See [`crate::rtc`] for more information.
 pub struct Rtc<S>(RTC, PhantomData<S>);
 
 impl Rtc<Run> {
+    /// Configure the RTC
     pub fn configure(rtc: RTC, sys: &mut System, exti: &mut EXTI) -> Rtc<Run> {
         // Unlock RTC registers
         rtc.wpr.write(|w| w.key().bits(0xCA));

@@ -1,23 +1,26 @@
+//! # System management
+//!
+//! The general clock and power configuration is such that to provide ultra low power operation
+//!
+//! * Enable SLEEPONEXIT
+//! * The system clock (MSI) is set to range 0 (~65.536 kHz)
+//! * The voltage regulator is set to range 3 (1.2v)
+//!
+//! Note that the LPRUN mode isn't used as it would require a full reset after each wakeup from
+//! stop. As the device is designed to constantly be entering and exiting stop mode, using
+//!
+
 use cortex_m::peripheral::SCB;
 use stm32l0::stm32l0x3::{PWR, RCC};
 
 /// The system clock frequency (Hz)
 pub const CLK_FREQ: usize = 65536;
 
-/// # System management
-///
-/// The general clock and power configuration is such that to provide ultra low power operation
-///
-/// * Enable SLEEPONEXIT
-/// * The system clock (MSI) is set to range 0 (~65.536 kHz)
-/// * The voltage regulator is set to range 3 (1.2v)
-///
-/// Note that the LPRUN mode isn't used as it would require a full reset after each wakeup from
-/// stop. As the device is designed to constantly be entering and exiting stop mode, using
-/// LPRUN isn't feasible.
+/// System manager
 pub struct System(RCC);
 
 impl System {
+    /// Configure the clock, power and reset
     pub fn configure(rcc: RCC, pwr: &mut PWR, scb: &mut SCB) -> Self {
         // Enter stop mode on WFI
         scb.set_sleepdeep();

@@ -1,3 +1,26 @@
+//! # Analogue to digital converter (ADC)
+//!
+//! In the watch, the ADC is used for reading the temperature of the watch as well as reading the
+//! battery cell voltage.
+//!
+//! ## Calibrating
+//!
+//! The ADC needs to be recalibrated when an environmental change occurs. The biggest factor is the
+//! battery voltage however temperature can also affect it's readings. It's recommended to run the
+//! [`calibrate()`](Adc::calibrate) method on a regular bases to ensure the ADC stays accurate.
+//!
+//! The resulting calibration value is written to the RTC backup register and read back in before
+//! each conversion sequence. This allows for the calibration to presist when the MCU enters STOP
+//! mode.
+//!
+//! ## Sample time
+//!
+//! With a system clock of 65.536 kHz, an ADC clock prescaler of /2 and sample duration of 1.5 clock
+//! cycles, this equates to a sample time of is approx 46μs. The prescaler is there to ensure that
+//! the ADC can get a 50% duty cycle, square wave clock signal.
+//!
+//! The minimum sample time for the temperature sensor and VREFINT voltage is 10μs.
+
 use crate::rtc::Rtc;
 use crate::system::System;
 use core::marker::PhantomData;
@@ -39,34 +62,25 @@ impl AdcMeasurement {
     }
 }
 
+/// ADC enabled state.
+///
+/// When in this state the ADC voltage reference is on.
 pub struct Enabled;
+
+/// ADC disabled state.
+///
+/// When in this state the ADC voltage reference is off to save power.
 pub struct Disabled;
 
-/// # Analogue to digital converter (ADC)
+/// # ADC
 ///
-/// In the watch, the ADC is used for reading the temperature of the watch as well as reading the
-/// battery cell voltage.
+/// The ADC has two possible states, [`Enabled`] and [`Disabled`].
 ///
-/// ## Calibrating
-///
-/// The ADC needs to be recalibrated when an environmental change occurs. The biggest factor is the
-/// battery voltage however temperature can also affect it's readings. It's recommended to run the
-/// [`calibrate()`](Adc::calibrate) method on a regular bases to ensure the ADC stays accurate.
-///
-/// The resulting calibration value is written to the RTC backup register and read back in before
-/// each conversion sequence. This allows for the calibration to presist when the MCU enters STOP
-/// mode.
-///
-/// ## Sample time
-///
-/// With a system clock of 65.536 kHz, an ADC clock prescaler of /2 and sample duration of 1.5 clock
-/// cycles, this equates to a sample time of is approx 46μs. The prescaler is there to ensure that
-/// the ADC can get a 50% duty cycle, square wave clock signal.
-///
-/// The minimum sample time for the temperature sensor and VREFINT voltage is 10μs.
-pub struct Adc<S>(ADC, PhantomData<S>);
+/// See [`crate::adc`] for a more information.
+pub struct Adc<STATE>(ADC, PhantomData<STATE>);
 
 impl Adc<Disabled> {
+    /// Configure the ADC
     pub fn configure(adc: ADC, sys: &mut System, syscfg: &mut SYSCFG) -> Adc<Disabled> {
         sys.enable_adc_clk();
 
