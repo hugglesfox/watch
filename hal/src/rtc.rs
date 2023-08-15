@@ -19,7 +19,6 @@
 //! that it survives a reset. In the watch backup register is used to store the ADC calibration.
 
 use crate::system::System;
-use core::marker::PhantomData;
 use stm32l0::stm32l0x3::{EXTI, RTC};
 
 use stm32l0::stm32l0x3::rtc::tr::R as TR_R;
@@ -42,26 +41,20 @@ pub struct Time {
     pub seconds_units: u8,
 }
 
-/// RTC initialisation mode
-///
-/// RTC is stopped; the time registers become writeable allowing the time to be set.
-pub struct Init;
-
-/// RTC run mode
-///
-/// RTC is measuring time; the time registers are read only.
-pub struct Run;
-
 /// # RTC
 ///
-/// The RTC has two states, [`Run`] mode and [`Init`] mode.
+/// The RTC has two states, `run` mode and `initialisation` mode.
+///
+/// - In initialisation mode the RTC is stopped; the time registers are writeable allowing the time
+///   to be set.
+/// - In run mode the RTC measures time; the time registers are read only.
 ///
 /// See [`crate::rtc`] for more information.
-pub struct Rtc<S>(RTC, PhantomData<S>);
+pub struct Rtc(RTC);
 
-impl Rtc<Run> {
+impl Rtc {
     /// Configure the RTC
-    pub fn configure(rtc: RTC, sys: &mut System, exti: &mut EXTI) -> Rtc<Run> {
+    pub fn configure(rtc: RTC, sys: &mut System, exti: &mut EXTI) -> Rtc {
         // Unlock RTC registers
         rtc.wpr.write(|w| w.key().bits(0xCA));
         rtc.wpr.write(|w| w.key().bits(0x53));
@@ -89,7 +82,7 @@ impl Rtc<Run> {
 
         sys.enable_rtc();
 
-        Self(rtc, PhantomData)
+        Self(rtc)
     }
 
     /// Read the time register.
@@ -137,13 +130,36 @@ impl Rtc<Run> {
         is_wakeup
     }
 
-    /// Enter initialisation mode
-    pub fn init(self) -> Rtc<Init> {
-        Rtc::from(self)
+    /// Execute closure in initialisation mode
+    pub fn init(&mut self, f: impl FnOnce(Init)) {
+        // Enter initialisation mode
+        self.0.isr.modify(|_, w| w.init().init_mode());
+        // Wait for initialisation mode to be entered
+        while self.0.isr.read().initf().is_not_allowed() {}
+
+        f(Init(&mut self.0));
+
+        // Return to run mode
+        self.0.isr.modify(|_, w| w.init().free_running_mode());
+        // Wait for run mode to be entered
+        while self.0.isr.read().initf().is_allowed() {}
+    }
+
+    /// Write ADC calibration to RTC backup register 0
+    pub(crate) fn set_adc_calibration(&mut self, calibration: u8) {
+        self.0.bkpr[0].write(|w| w.bkp().bits(calibration as u32));
+    }
+
+    /// Read ADC calibration to RTC backup register 0
+    pub(crate) fn get_adc_calibration(&self) -> u8 {
+        self.0.bkpr[0].read().bkp().bits() as u8
     }
 }
 
-impl Rtc<Init> {
+/// Initialisation state
+pub struct Init<'a>(&'a mut RTC);
+
+impl<'a> Init<'a> {
     /// Set the RTC to the given time
     pub fn set_time(&mut self, time: Time) {
         // Set time
@@ -161,46 +177,5 @@ impl Rtc<Init> {
                 .su()
                 .bits(time.seconds_units)
         });
-    }
-
-    /// Enter run mode
-    pub fn run(self) -> Rtc<Run> {
-        Rtc::from(self)
-    }
-}
-
-impl From<Rtc<Run>> for Rtc<Init> {
-    /// Enter initialisation mode
-    fn from(rtc: Rtc<Run>) -> Rtc<Init> {
-        rtc.0.isr.modify(|_, w| w.init().init_mode());
-
-        // Wait for initialisation mode to be entered
-        while rtc.0.isr.read().initf().is_not_allowed() {}
-
-        Rtc(rtc.0, PhantomData)
-    }
-}
-
-impl From<Rtc<Init>> for Rtc<Run> {
-    /// Enter run mode
-    fn from(rtc: Rtc<Init>) -> Rtc<Run> {
-        rtc.0.isr.modify(|_, w| w.init().free_running_mode());
-
-        // Wait for run mode to be entered
-        while rtc.0.isr.read().initf().is_allowed() {}
-
-        Rtc(rtc.0, PhantomData)
-    }
-}
-
-impl<S> Rtc<S> {
-    /// Write ADC calibration to RTC backup register 0
-    pub(crate) fn set_adc_calibration(&mut self, calibration: u8) {
-        self.0.bkpr[0].write(|w| w.bkp().bits(calibration as u32));
-    }
-
-    /// Read ADC calibration to RTC backup register 0
-    pub(crate) fn get_adc_calibration(&self) -> u8 {
-        self.0.bkpr[0].read().bkp().bits() as u8
     }
 }
