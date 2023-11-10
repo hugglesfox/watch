@@ -94,7 +94,7 @@ impl Rtc {
         let second = self.0.tr.read();
 
         if first.su().bits() != second.su().bits() {
-            // An update occured during the first or second read. A third read will definately give
+            // An update occurred during the first or second read. A third read will definitely give
             // a correct result
             return self.0.tr.read();
         }

@@ -1,29 +1,31 @@
 //! # Analogue to digital converter (ADC)
 //!
-//! In the watch, the ADC is used for reading the temperature of the watch as well as reading the
-//! battery cell voltage.
+//! In the watch, the ADC is used for reading the temperature as well as reading
+//! the battery cell voltage.
 //!
 //! ## Calibrating
 //!
-//! The ADC needs to be recalibrated when an environmental change occurs. The biggest factor is the
-//! battery voltage however temperature can also affect it's readings. It's recommended to run the
-//! [`calibrate()`](Adc::calibrate) method on a regular bases to ensure the ADC stays accurate.
+//! The ADC needs to be recalibrated when an environmental change occurs. The
+//! biggest factor is the battery voltage however temperature can also affect
+//! it's readings. It's recommended to run the [`calibrate()`](Adc::calibrate)
+//! method on a regular bases to ensure the ADC stays accurate.
 //!
-//! The resulting calibration value is written to the RTC backup register and read back in before
-//! each conversion sequence. This allows for the calibration to presist when the MCU enters STOP
-//! mode.
+//! The resulting calibration value is written to the RTC backup register and
+//! read back in before each conversion sequence. This allows for the
+//! calibration to persist when the MCU enters STOP mode.
 //!
 //! ## Sample time
 //!
-//! With a system clock of 65.536 kHz, an ADC clock prescaler of /2 and sample duration of 1.5 clock
-//! cycles, this equates to a sample time of is approx 46μs. The prescaler is there to ensure that
-//! the ADC can get a 50% duty cycle, square wave clock signal.
+//! With a system clock of 65.536 kHz, an ADC clock prescaler of /2 and sample
+//! duration of 1.5 clock cycles, this equates to a sample time of is approx
+//! 46μs. The prescaler is there to ensure that the ADC can get a 50% duty
+//! cycle, square wave clock signal.
 //!
-//! The minimum sample time for the temperature sensor and VREFINT voltage is 10μs.
+//! The minimum sample time for the temperature sensor and VREFINT voltage is
+//! 10μs.
 
 use crate::rtc::Rtc;
 use crate::system::System;
-use core::marker::PhantomData;
 use once_cell::sync::Lazy;
 use stm32l0::stm32l0x3::{ADC, SYSCFG};
 
@@ -62,26 +64,16 @@ impl AdcMeasurement {
     }
 }
 
-/// ADC enabled state.
-///
-/// When in this state the ADC voltage reference is on.
-pub struct Enabled;
-
-/// ADC disabled state.
-///
-/// When in this state the ADC voltage reference is off to save power.
-pub struct Disabled;
-
 /// # ADC
 ///
-/// The ADC has two possible states, [`Enabled`] and [`Disabled`].
+/// TODO: 
 ///
 /// See [`crate::adc`] for a more information.
-pub struct Adc<STATE>(ADC, PhantomData<STATE>);
+pub struct Adc(ADC);
 
-impl Adc<Disabled> {
+impl Adc {
     /// Configure the ADC
-    pub fn configure(adc: ADC, sys: &mut System, syscfg: &mut SYSCFG) -> Adc<Disabled> {
+    pub fn configure(adc: ADC, sys: &mut System, syscfg: &mut SYSCFG) -> Adc {
         sys.enable_adc_clk();
 
         // Use PCLK/2 as the ADC clock
@@ -106,16 +98,47 @@ impl Adc<Disabled> {
         adc.chselr
             .write(|w| w.chsel17().selected().chsel18().selected());
 
-        Self(adc, PhantomData)
+        Self(adc)
     }
 
     /// Enable the ADC
-    pub fn enable(self) -> Adc<Enabled> {
-        Adc::from(self)
+    pub fn enabled(&mut self, f: impl FnOnce(Enabled)) {
+        // Configure ADC common configuration register
+        //
+        // * Enable vrefint
+        // * Enable temperature sensor
+        self.0
+            .ccr
+            .modify(|_, w| w.vrefen().enabled().tsen().enabled());
+
+        // Both VREFINT and TSEN have a maximum start time of 10us. As the sysclk is at 65.536 kHz,
+        // each clock cycle is ~15us. Therefore by the time the ADC is ready,
+        // they will be stabilized.
+
+        // Enable ADC
+        self.0.cr.modify(|_, w| w.aden().enabled());
+
+        // Wait for the ADC to power up
+        while self.0.isr.read().adrdy().is_not_ready() {}
+        self.0.isr.modify(|_, w| w.adrdy().clear());
+        
+        // Execute f
+        f(Enabled(&mut self.0));
+
+        // Configure ADC common configuration register
+        //
+        // * Disable vrefint
+        // * Disable temperature sensor
+        self.0
+            .ccr
+            .modify(|_, w| w.vrefen().disabled().tsen().disabled());
+
+        // Disable ADC
+        self.0.cr.modify(|_, w| w.addis().disable());
     }
 
     /// Calibrate the ADC.
-    pub fn calibrate<S>(&mut self, rtc: &mut Rtc<S>) {
+    pub fn calibrate<S>(&mut self, rtc: &mut Rtc) {
         self.0.cr.modify(|_, w| w.adcal().start_calibration());
 
         while self.0.isr.read().eocal().is_not_complete() {}
@@ -128,12 +151,10 @@ impl Adc<Disabled> {
     }
 }
 
-impl Adc<Enabled> {
-    /// Disable the ADC
-    pub fn disable(self) -> Adc<Disabled> {
-        Adc::from(self)
-    }
+/// ADC enabled implementation
+pub struct Enabled<'a>(&'a mut ADC);
 
+impl<'a> Enabled<'a> {
     /// Read the next adc conversion
     fn read(&self) -> u16 {
         // Wait for the conversion to finish
@@ -144,20 +165,21 @@ impl Adc<Enabled> {
     }
 
     /// Apply the calibration stored in the RTC backup registers
-    fn apply_calibration<S>(&mut self, rtc: &Rtc<S>) {
+    fn apply_calibration(&mut self, rtc: &Rtc) {
         self.0
             .calfact
             .write(|w| w.calfact().bits(rtc.get_adc_calibration()));
     }
 
     /// Perform a measurement
-    pub fn measure<S>(&mut self, rtc: &Rtc<S>) -> AdcMeasurement {
+    pub fn measure(&mut self, rtc: &Rtc) -> AdcMeasurement {
         self.apply_calibration(rtc);
 
         let mut vrefint = 0;
         let mut tsense = 0;
 
-        // First measurement is vrefint, followed immediently by the temperature sensor
+        // First measurement is vrefint, followed immediately by the temperature
+        // sensor
         cortex_m::interrupt::free(|_| {
             // Start conversion sequence
             self.0.cr.modify(|_, w| w.adstart().start_conversion());
@@ -170,48 +192,5 @@ impl Adc<Enabled> {
         while self.0.cr.read().adstart().is_active() {}
 
         AdcMeasurement { vrefint, tsense }
-    }
-}
-
-impl From<Adc<Disabled>> for Adc<Enabled> {
-    /// Enable the ADC
-    fn from(adc: Adc<Disabled>) -> Adc<Enabled> {
-        // Configure ADC common configuration register
-        //
-        // * Enable vrefint
-        // * Enable temperature sensor
-        adc.0
-            .ccr
-            .modify(|_, w| w.vrefen().enabled().tsen().enabled());
-
-        // Both VREFINT and TSEN have a maximum start time of 10us. As the sysclk is at 65.536 kHz,
-        // each clock cycle is ~15us. Therefore by the time the ADC is ready, they will be stablised.
-
-        // Enable ADC
-        adc.0.cr.modify(|_, w| w.aden().enabled());
-
-        // Wait for the ADC to power up
-        while adc.0.isr.read().adrdy().is_not_ready() {}
-        adc.0.isr.modify(|_, w| w.adrdy().clear());
-
-        Adc(adc.0, PhantomData)
-    }
-}
-
-impl From<Adc<Enabled>> for Adc<Disabled> {
-    /// Disable the ADC, powering down it's regulator
-    fn from(adc: Adc<Enabled>) -> Adc<Disabled> {
-        // Configure ADC common configuration register
-        //
-        // * Disable vrefint
-        // * Disable temperature sensor
-        adc.0
-            .ccr
-            .modify(|_, w| w.vrefen().disabled().tsen().disabled());
-
-        // Disable ADC
-        adc.0.cr.modify(|_, w| w.addis().disable());
-
-        Adc(adc.0, PhantomData)
     }
 }
