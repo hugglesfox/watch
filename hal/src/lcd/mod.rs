@@ -1,10 +1,31 @@
+pub mod digit;
+pub mod segment;
+
+use core::ops::{Deref, DerefMut};
 use crate::system::System;
+use self::segment::Segments;
 use stm32l0::stm32l0x3::{GPIOA, GPIOB, LCD, SYSCFG};
+
 
 /// Liquid crystal display
 pub struct Lcd(LCD);
 
+impl Deref for Lcd {
+    type Target = LCD;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0        
+    } 
+}
+
+impl DerefMut for Lcd {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0        
+    } 
+}
+
 impl Lcd {
+    /// Configure the LCD
     pub fn configure(
         lcd: LCD,
         sys: &mut System,
@@ -91,17 +112,18 @@ impl Lcd {
         Self(lcd)
     }
 
-    /// Enable a specific segment
-    pub unsafe fn enable_segment(&mut self, comm: usize, segment: usize) {
-        // Get comm display memory register
-        let reg = self.0.ram_com0.as_ptr().add(0x4 * comm);
+    /// Write segments to the LCD
+    pub fn write(&mut self, seg: Segments) {
+        const MASK: u128 = u32::MAX as u128;
 
-        // Enable the segment
-        reg.write(reg.read() | 1 << segment)
-    }
+        // This is safe assuming that [`Segments`] has been correctly created
+        unsafe {
+            (*self).ram_com0.as_ptr().write((seg & MASK) as u32);
+            (*self).ram_com1.as_ptr().write((seg >> 32 & MASK) as u32);
+            (*self).ram_com2.as_ptr().write((seg >> 64 & MASK) as u32);
+        }
 
-    /// Trigger a display update
-    pub fn update(&mut self) {
-        self.0.sr.modify(|_, w| w.udr().set_bit());
+        // Trigger a display update
+        (*self).sr.modify(|_, w| w.udr().set_bit());
     }
 }
