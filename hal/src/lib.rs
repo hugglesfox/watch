@@ -20,14 +20,12 @@
 #![warn(missing_docs)]
 
 pub mod adc;
-pub mod button;
 pub mod buzzer;
 pub mod lcd;
 pub mod rtc;
 pub mod system;
 
 pub use adc::Adc;
-pub use button::Button;
 pub use buzzer::Buzzer;
 pub use lcd::Lcd;
 pub use rtc::Rtc;

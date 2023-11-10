@@ -73,7 +73,7 @@ pub struct Adc(ADC);
 
 impl Adc {
     /// Configure the ADC
-    pub fn configure(adc: ADC, sys: &mut System, syscfg: &mut SYSCFG) -> Adc {
+    pub fn configure(adc: ADC, sys: &mut System, syscfg: &mut SYSCFG) -> Self {
         sys.enable_adc_clk();
 
         // Use PCLK/2 as the ADC clock

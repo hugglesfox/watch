@@ -54,7 +54,7 @@ pub struct Rtc(RTC);
 
 impl Rtc {
     /// Configure the RTC
-    pub fn configure(rtc: RTC, sys: &mut System, exti: &mut EXTI) -> Rtc {
+    pub fn configure(rtc: RTC, sys: &mut System, exti: &mut EXTI) -> Self {
         // Unlock RTC registers
         rtc.wpr.write(|w| w.key().bits(0xCA));
         rtc.wpr.write(|w| w.key().bits(0x53));
