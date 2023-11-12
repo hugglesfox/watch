@@ -18,12 +18,14 @@
 //! The RTC contains a register which retains it's contents as long as the RTC is powered; meaning
 //! that it survives a reset. In the watch backup register is used to store the ADC calibration.
 
+use core::ops::{Deref, DerefMut};
+
 use crate::system::System;
 use stm32l0::stm32l0x3::{EXTI, RTC};
 
 use stm32l0::stm32l0x3::rtc::tr::R as TR_R;
 
-/// Binary coded decimal represenation of the time
+/// Binary coded decimal representation of the time
 pub struct Time {
     /// hour tens digit (0-2)
     pub hour_tens: u8,
@@ -51,6 +53,20 @@ pub struct Time {
 ///
 /// See [`crate::rtc`] for more information.
 pub struct Rtc(RTC);
+
+impl Deref for Rtc {
+    type Target = RTC;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0        
+    }
+}
+
+impl DerefMut for Rtc {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl Rtc {
     /// Configure the RTC
@@ -96,7 +112,7 @@ impl Rtc {
         if first.su().bits() != second.su().bits() {
             // An update occurred during the first or second read. A third read will definitely give
             // a correct result
-            return self.0.tr.read();
+            return (*self).tr.read();
         }
 
         second
@@ -120,11 +136,11 @@ impl Rtc {
 
     /// Check the wake up timer interrupt flag
     pub fn isr_wakeup(&mut self) -> bool {
-        let is_wakeup = self.0.isr.read().wutf().bit_is_set();
+        let is_wakeup = (*self).isr.read().wutf().bit_is_set();
 
         if is_wakeup {
             // Clear the interrupt flag
-            self.0.isr.modify(|_, w| w.wutf().clear_bit());
+            (*self).isr.modify(|_, w| w.wutf().clear_bit());
         }
 
         is_wakeup
@@ -133,37 +149,51 @@ impl Rtc {
     /// Execute closure in initialisation mode
     pub fn init(&mut self, f: impl FnOnce(Init)) {
         // Enter initialisation mode
-        self.0.isr.modify(|_, w| w.init().init_mode());
+        (*self).isr.modify(|_, w| w.init().init_mode());
         // Wait for initialisation mode to be entered
-        while self.0.isr.read().initf().is_not_allowed() {}
+        while (*self).isr.read().initf().is_not_allowed() {}
 
-        f(Init(&mut self.0));
+        f(Init(&mut *self));
 
         // Return to run mode
-        self.0.isr.modify(|_, w| w.init().free_running_mode());
+        (*self).isr.modify(|_, w| w.init().free_running_mode());
         // Wait for run mode to be entered
-        while self.0.isr.read().initf().is_allowed() {}
+        while (*self).isr.read().initf().is_allowed() {}
     }
 
     /// Write ADC calibration to RTC backup register 0
     pub(crate) fn set_adc_calibration(&mut self, calibration: u8) {
-        self.0.bkpr[0].write(|w| w.bkp().bits(calibration as u32));
+        (*self).bkpr[0].write(|w| w.bkp().bits(calibration as u32));
     }
 
     /// Read ADC calibration to RTC backup register 0
     pub(crate) fn get_adc_calibration(&self) -> u8 {
-        self.0.bkpr[0].read().bkp().bits() as u8
+        (*self).bkpr[0].read().bkp().bits() as u8
     }
 }
 
 /// Initialisation state
 pub struct Init<'a>(&'a mut RTC);
 
+impl<'a> Deref for Init<'a> {
+    type Target = RTC;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'a> DerefMut for Init<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl<'a> Init<'a> {
     /// Set the RTC to the given time
     pub fn set_time(&mut self, time: Time) {
         // Set time
-        self.0.tr.write(|w| {
+        (*self).tr.write(|w| {
             w.ht()
                 .bits(time.hour_tens)
                 .hu()

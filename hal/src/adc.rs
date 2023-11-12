@@ -24,9 +24,10 @@
 //! The minimum sample time for the temperature sensor and VREFINT voltage is
 //! 10μs.
 
+use core::ops::{DerefMut, Deref};
+
 use crate::rtc::Rtc;
 use crate::system::System;
-use once_cell::sync::Lazy;
 use stm32l0::stm32l0x3::{ADC, SYSCFG};
 
 const VREFINT_CAL_VREF: usize = 3000; // mV
@@ -38,11 +39,10 @@ const TS_CAL1: *const u16 = 0x1FF8007A as *const u16;
 const TS_CAL2_TEMP: usize = 130; // °C
 const TS_CAL2: *const u16 = 0x1FF8007E as *const u16;
 
-static VREFINT_VREF_BY_CAL: Lazy<usize> =
-    Lazy::new(|| unsafe { VREFINT_CAL_VREF * (*VREFINT_CAL as usize) });
-static TS_GRADIENT: Lazy<usize> = Lazy::new(|| unsafe {
+static VREFINT_VREF_BY_CAL: usize = unsafe { VREFINT_CAL_VREF * (*VREFINT_CAL as usize) };
+static TS_GRADIENT: usize = unsafe {
     (TS_CAL2_TEMP - TS_CAL1_TEMP) / (*TS_CAL2 as usize - *TS_CAL1 as usize)
-});
+};
 
 /// The results of an ADC measurement
 pub struct AdcMeasurement {
@@ -53,14 +53,14 @@ pub struct AdcMeasurement {
 impl AdcMeasurement {
     /// Get the battery voltage in millivolts
     pub fn voltage(&self) -> usize {
-        *VREFINT_VREF_BY_CAL / self.vrefint as usize
+        VREFINT_VREF_BY_CAL / self.vrefint as usize
     }
 
     /// Get the temperature in degrees celsius
     ///
     /// FIXME: Make this millidegrees
     pub fn temperature(&self) -> usize {
-        *TS_GRADIENT * (self.tsense as usize - TS_CAL1 as usize) + TS_CAL1_TEMP
+        TS_GRADIENT * (self.tsense as usize - TS_CAL1 as usize) + TS_CAL1_TEMP
     }
 }
 
@@ -70,6 +70,20 @@ impl AdcMeasurement {
 ///
 /// See [`crate::adc`] for a more information.
 pub struct Adc(ADC);
+
+impl Deref for Adc {
+    type Target = ADC;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Adc {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl Adc {
     /// Configure the ADC
@@ -107,7 +121,7 @@ impl Adc {
         //
         // * Enable vrefint
         // * Enable temperature sensor
-        self.0
+        (*self)
             .ccr
             .modify(|_, w| w.vrefen().enabled().tsen().enabled());
 
@@ -116,57 +130,71 @@ impl Adc {
         // they will be stabilized.
 
         // Enable ADC
-        self.0.cr.modify(|_, w| w.aden().enabled());
+        (*self).cr.modify(|_, w| w.aden().enabled());
 
         // Wait for the ADC to power up
         while self.0.isr.read().adrdy().is_not_ready() {}
-        self.0.isr.modify(|_, w| w.adrdy().clear());
+        (*self).isr.modify(|_, w| w.adrdy().clear());
         
         // Execute f
-        f(Enabled(&mut self.0));
+        f(Enabled(&mut *self));
 
         // Configure ADC common configuration register
         //
         // * Disable vrefint
         // * Disable temperature sensor
-        self.0
+        (*self)
             .ccr
             .modify(|_, w| w.vrefen().disabled().tsen().disabled());
 
         // Disable ADC
-        self.0.cr.modify(|_, w| w.addis().disable());
+        (*self).cr.modify(|_, w| w.addis().disable());
     }
 
     /// Calibrate the ADC.
-    pub fn calibrate<S>(&mut self, rtc: &mut Rtc) {
-        self.0.cr.modify(|_, w| w.adcal().start_calibration());
+    pub fn calibrate(&mut self, rtc: &mut Rtc) {
+        (*self).cr.modify(|_, w| w.adcal().start_calibration());
 
-        while self.0.isr.read().eocal().is_not_complete() {}
-        self.0.isr.modify(|_, w| w.eocal().clear());
+        while (*self).isr.read().eocal().is_not_complete() {}
+        (*self).isr.modify(|_, w| w.eocal().clear());
 
-        rtc.set_adc_calibration(self.0.calfact.read().calfact().bits());
+        rtc.set_adc_calibration((*self).calfact.read().calfact().bits());
 
         // Ensure ADCAL = 0 before continuing
-        while self.0.cr.read().adcal().is_calibrating() {}
+        while (*self).cr.read().adcal().is_calibrating() {}
     }
 }
 
 /// ADC enabled implementation
 pub struct Enabled<'a>(&'a mut ADC);
 
+impl<'a> Deref for Enabled<'a> {
+    type Target = ADC;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0        
+    }
+}
+
+impl<'a> DerefMut for Enabled<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl<'a> Enabled<'a> {
     /// Read the next adc conversion
     fn read(&self) -> u16 {
         // Wait for the conversion to finish
-        while self.0.isr.read().eoc().is_not_complete() {}
+        while (*self).isr.read().eoc().is_not_complete() {}
 
         // Reading ADC_DR clears the conversion finished status bit
-        self.0.dr.read().data().bits()
+        (*self).dr.read().data().bits()
     }
 
     /// Apply the calibration stored in the RTC backup registers
     fn apply_calibration(&mut self, rtc: &Rtc) {
-        self.0
+        (*self)
             .calfact
             .write(|w| w.calfact().bits(rtc.get_adc_calibration()));
     }
@@ -182,14 +210,14 @@ impl<'a> Enabled<'a> {
         // sensor
         cortex_m::interrupt::free(|_| {
             // Start conversion sequence
-            self.0.cr.modify(|_, w| w.adstart().start_conversion());
+            (*self).cr.modify(|_, w| w.adstart().start_conversion());
 
             vrefint = self.read();
             tsense = self.read();
         });
 
         // Ensure ADSTART = 0 before continuing
-        while self.0.cr.read().adstart().is_active() {}
+        while (*self).cr.read().adstart().is_active() {}
 
         AdcMeasurement { vrefint, tsense }
     }
