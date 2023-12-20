@@ -116,7 +116,7 @@ impl Lcd {
     pub fn write(&mut self, seg: Segments) {
         const MASK: u128 = u32::MAX as u128;
 
-        // This is safe assuming that [`Segments`] has been correctly created
+        // This is safe assuming that Segments has been correctly created
         unsafe {
             (*self).ram_com0.as_ptr().write((seg & MASK) as u32);
             (*self).ram_com1.as_ptr().write((seg >> 32 & MASK) as u32);

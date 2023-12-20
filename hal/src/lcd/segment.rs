@@ -55,9 +55,10 @@ pub const BLANK: Segments = 0;
 
 // 7 segment displays are numbered left (hours) to right (seconds), 0 to 5
 segments! {
-    D0_AD => (1, 5),
+    D0_A => (1, 5),
     D0_B => (0, 4),
     D0_C => (2, 4),
+    D0_D => (1, 5),
     D0_E => (2, 5),
     D0_F => (0, 5),
     D0_G => (1, 4),
@@ -70,9 +71,10 @@ segments! {
     D1_F => (1, 6),
     D1_G => (1, 3),
 
-    D2_AD => (2, 1),
+    D2_A => (2, 1),
     D2_B => (0, 0),
     D2_C => (2, 0),
+    D2_D => (2, 1),
     D2_E => (1, 1),
     D2_F => (0, 1),
     D2_G => (1, 0),
