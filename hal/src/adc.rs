@@ -25,23 +25,25 @@
 //! 10μs.
 
 use core::ops::{DerefMut, Deref};
+use core::ptr;
 
 use crate::rtc::Rtc;
 use crate::system::System;
 use stm32l0::stm32l0x3::{ADC, SYSCFG};
 
-const VREFINT_CAL_VREF: usize = 3000; // mV
+const VREFINT_CAL_VREF: u16 = 3000; // mV
 const VREFINT_CAL: *const u16 = 0x1FF80078 as *const u16;
 
-const TS_CAL1_TEMP: usize = 30; // °C
+const TS_CAL1_TEMP: u16 = 30; // °C
 const TS_CAL1: *const u16 = 0x1FF8007A as *const u16;
 
-const TS_CAL2_TEMP: usize = 130; // °C
+const TS_CAL2_TEMP: u16 = 130; // °C
 const TS_CAL2: *const u16 = 0x1FF8007E as *const u16;
 
-static VREFINT_VREF_BY_CAL: usize = unsafe { VREFINT_CAL_VREF * (*VREFINT_CAL as usize) };
-static TS_GRADIENT: usize = unsafe {
-    (TS_CAL2_TEMP - TS_CAL1_TEMP) / (*TS_CAL2 as usize - *TS_CAL1 as usize)
+static VREFINT_VREF_BY_CAL: u16 = unsafe { VREFINT_CAL_VREF * *VREFINT_CAL };
+
+static TS_GRADIENT: u16 = unsafe {
+    (TS_CAL2_TEMP - TS_CAL1_TEMP) / (*TS_CAL2 - *TS_CAL1)
 };
 
 /// The results of an ADC measurement
@@ -52,15 +54,15 @@ pub struct AdcMeasurement {
 
 impl AdcMeasurement {
     /// Get the battery voltage in millivolts
-    pub fn voltage(&self) -> usize {
-        VREFINT_VREF_BY_CAL / self.vrefint as usize
+    pub fn voltage(&self) -> u16 {
+        VREFINT_VREF_BY_CAL / self.vrefint
     }
 
     /// Get the temperature in degrees celsius
     ///
     /// FIXME: Make this millidegrees
-    pub fn temperature(&self) -> usize {
-        TS_GRADIENT * (self.tsense as usize - TS_CAL1 as usize) + TS_CAL1_TEMP
+    pub unsafe fn temperature(&self) -> u16 {
+        TS_GRADIENT * (self.tsense - *TS_CAL1) + TS_CAL1_TEMP
     }
 }
 
