@@ -43,22 +43,25 @@ pub struct AdcMeasurement {
 
 impl AdcMeasurement {
     /// Get the battery voltage in millivolts
-    pub unsafe fn voltage(&self) -> u16 {
+    pub fn voltage(&self) -> u16 {
         let vrefint_cal = 0x1FF80078 as *const u16;
 
-        (VREFINT_CAL_VREF * *vrefint_cal) / self.vrefint
+        unsafe {
+            (VREFINT_CAL_VREF * *vrefint_cal) / self.vrefint
+        }
     }
 
     /// Get the temperature in degrees celsius
     ///
-    pub unsafe fn temperature(&self) -> u16 {
+    pub fn temperature(&self) -> u16 {
         // FIXME: Make this millidegrees
         let ts_cal1 = 0x1FF8007A as *const u16;
         let ts_cal2 = 0x1FF8007E as *const u16;
 
-        let gradient = (TS_CAL2_TEMP - TS_CAL1_TEMP) / (*ts_cal2 - *ts_cal1);
-
-        gradient * (self.tsense - *ts_cal1) + TS_CAL1_TEMP
+        unsafe {
+            let gradient = (TS_CAL2_TEMP - TS_CAL1_TEMP) / (*ts_cal2 - *ts_cal1);
+            gradient * (self.tsense - *ts_cal1) + TS_CAL1_TEMP
+        }
     }
 }
 
