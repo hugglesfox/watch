@@ -30,10 +30,7 @@ use crate::rtc::Rtc;
 use crate::system::System;
 use stm32l0::stm32l0x3::{ADC, SYSCFG};
 
-const VREFINT_CAL_VREF: u16 = 3000; // mV
 
-const TS_CAL1_TEMP: u16 = 30; // °C
-const TS_CAL2_TEMP: u16 = 130; // °C
 
 /// The results of an ADC measurement
 pub struct AdcMeasurement {
@@ -42,25 +39,34 @@ pub struct AdcMeasurement {
 }
 
 impl AdcMeasurement {
+    const VREFINT_CAL: *const u16 = 0x1FF8_0078 as *const _;
+
+    const VREFINT_CAL_VREF: u16 = 3000; // mV
+
+    const TS_CAL1: *const u16 = 0x1FF8_007A as *const _;
+    const TS_CAL2: *const u16 = 0x1FF8_007E as *const _;
+
+    const TS_CAL1_TEMP: u16 = 30; // °C
+    const TS_CAL2_TEMP: u16 = 130; // °C
+    
+    const TS_CALIBRATION_RANGE: u16 = Self::TS_CAL2_TEMP - Self::TS_CAL1_TEMP;
+
     /// Get the battery voltage in millivolts
     pub fn voltage(&self) -> u16 {
-        let vrefint_cal = 0x1FF80078 as *const u16;
-
         unsafe {
-            (VREFINT_CAL_VREF * *vrefint_cal) / self.vrefint
+            (Self::VREFINT_CAL_VREF * *Self::VREFINT_CAL) / self.vrefint
         }
     }
 
     /// Get the temperature in degrees celsius
-    ///
     pub fn temperature(&self) -> u16 {
         // FIXME: Make this millidegrees
-        let ts_cal1 = 0x1FF8007A as *const u16;
-        let ts_cal2 = 0x1FF8007E as *const u16;
 
         unsafe {
-            let gradient = (TS_CAL2_TEMP - TS_CAL1_TEMP) / (*ts_cal2 - *ts_cal1);
-            gradient * (self.tsense - *ts_cal1) + TS_CAL1_TEMP
+            let value_range: u16 = *Self::TS_CAL2 - *Self::TS_CAL1;
+            let gradient = Self::TS_CALIBRATION_RANGE / value_range;
+
+            gradient * (self.tsense - *Self::TS_CAL1) + Self::TS_CAL1_TEMP
         }
     }
 }
