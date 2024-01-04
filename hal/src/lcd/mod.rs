@@ -1,9 +1,8 @@
-pub mod digit;
-pub mod segment;
+// pub mod digit;
+// pub mod segment;
 
 use core::ops::{Deref, DerefMut};
 use crate::system::System;
-use self::segment::Segments;
 use stm32l0::stm32l0x3::{GPIOA, GPIOB, LCD, SYSCFG};
 
 
@@ -113,14 +112,9 @@ impl Lcd {
     }
 
     /// Write segments to the LCD
-    pub fn write(&mut self, seg: Segments) {
-        const MASK: u128 = u32::MAX as u128;
-
-        // This is safe assuming that Segments has been correctly created
+    pub fn write(&mut self, seg: usize) {
         unsafe {
-            (*self).ram_com0.as_ptr().write((seg & MASK) as u32);
-            (*self).ram_com1.as_ptr().write((seg >> 32 & MASK) as u32);
-            (*self).ram_com2.as_ptr().write((seg >> 64 & MASK) as u32);
+            (*self).ram_com0.as_ptr().write(|w| w.s0().set_bit());
         }
 
         // Trigger a display update

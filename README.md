@@ -22,4 +22,3 @@ Resources and other works which I have referenced for this project
 - https://github.com/joeycastillo/Sensor-Watch
 - https://github.com/carrotIndustries/pluto
 - https://docs.rust-embedded.org/book/
-

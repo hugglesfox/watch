@@ -11,4 +11,3 @@ license = "GPL-2.0-or-later"
 cortex-m = "0.7.7"
 paste = "1.0.14"
 stm32l0 = { version = "0.15.1", features = ["stm32l0x3"] }
-

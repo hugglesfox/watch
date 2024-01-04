@@ -12,7 +12,6 @@
 /// 0x00 | u32 COM0 |
 ///       ----------
 /// ```
-pub type Segments = u128;
 
 /// Convert an LCD segment pin number to an MCU LCD segment number
 const fn lcd_to_mcu(seg: usize) -> usize {
@@ -38,20 +37,17 @@ const fn lcd_to_mcu(seg: usize) -> usize {
 }
 
 /// Create a segment from an LCD common and segment line
-const fn build_segment(com: usize, seg: usize) -> Segments {
-    1 << (lcd_to_mcu(seg) + (com * 32))
+const fn com_addr(com: usize) -> usize {
+
 }
 
 macro_rules! segments {
     ($($name:ident => ($com:literal, $seg:literal)),*) => {
         $(
-            pub const $name: Segments = build_segment($com, $seg);
+            pub const $name: (usize, usize) = ($com, lcd_to_mcu($seg));
         )*
-    };
+    }
 }
-
-/// Turn off all segments
-pub const BLANK: Segments = 0;
 
 // 7 segment displays are numbered left (hours) to right (seconds), 0 to 5
 segments! {
