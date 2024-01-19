@@ -404,9 +404,7 @@
     }
   },
   "libraries": {
-    "pinned_footprint_libs": [
-      "f-91w"
-    ],
+    "pinned_footprint_libs": [],
     "pinned_symbol_libs": [
       "f-91w"
     ]
