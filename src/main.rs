@@ -2,44 +2,46 @@
 #![no_std]
 #![feature(type_alias_impl_trait)]
 
-use defmt_rtt as _; // global logger
+use defmt_rtt as _; // global logger 
 use panic_probe as _; // panic handler
 
+mod button;
 mod buzzer;
-mod buttons;
 mod measurement;
+mod rtc;
 
 #[rtic::app(
     device = stm32l0xx_hal::pac,
     dispatchers = [I2C1, I2C2, I2C3]
 )]
 mod app {
-    use crate::buzzer::{self, Buzzer};
-    use crate::buttons;
     use crate::measurement::{Temperature, Voltage};
+    use crate::buzzer::Buzzer;
 
     use cortex_m::peripheral::SCB;
     use stm32l0xx_hal::prelude::*;
 
+    use stm32l0xx_hal::adc::{Adc, VRef, VTemp};
     use stm32l0xx_hal::exti::{Exti, GpioLine};
+    use stm32l0xx_hal::pwm::Timer;
     use stm32l0xx_hal::pwr::PWR;
     use stm32l0xx_hal::rcc::Rcc;
     use stm32l0xx_hal::rtc::Rtc;
     use stm32l0xx_hal::syscfg::SYSCFG;
-    use stm32l0xx_hal::adc::{Adc, VTemp, VRef};
-    use stm32l0xx_hal::{adc, exti, pwr, rcc, rtc};
+    use stm32l0xx_hal::{adc, pwr, rcc, rtc};
 
     use rtic_monotonics::systick::{fugit::ExtU32, Systick};
+
 
     #[shared]
     struct Shared {
         // Peripherals
         pwr: PWR,
-        scb: SCB,
         rcc: Rcc,
+        rtc: Rtc,
+        scb: SCB,
 
         // State
-
         /// Whether buzzer is allowed to sound (toggable with the alarm button)
         #[lock_free]
         buzzer_enabled: bool,
@@ -49,9 +51,8 @@ mod app {
 
     #[local]
     struct Local {
-        buzzer: Buzzer,
-        rtc: Rtc,
         adc: Adc<adc::Ready>,
+        buzzer: Buzzer,
     }
 
     #[init]
@@ -76,27 +77,26 @@ mod app {
         let gpiob = dp.GPIOB.split(&mut rcc);
 
         // Setup buzzer
-        let buzzer = buzzer::init(dp.TIM2, gpioa.pa0, 440.Hz(), &mut rcc);
+        let timer = Timer::new(dp.TIM2, 440.Hz(), &mut rcc);
+        let buzzer = timer.channel1.assign(gpioa.pa0);
 
         // Setup systick timer
         let systick_token = rtic_monotonics::create_systick_token!();
         Systick::start(cp.SYST, rcc.clocks.sys_clk().0, systick_token);
 
-
         // Setup buttons
         let alarm_btn = gpioa.pa2.into_pull_down_input();
         let mode_btn = gpiob.pb9.into_pull_down_input();
-        buttons::init(alarm_btn, mode_btn, &mut exti, &mut syscfg);
+
+        use crate::button::Button as _;
+        alarm_btn.enable_interrupt(&mut exti, &mut syscfg);
+        mode_btn.enable_interrupt(&mut exti, &mut syscfg);
 
         // Setup RTC
         let mut rtc = Rtc::new(dp.RTC, &mut rcc, &pwr, rtc::ClockSource::LSE, None).unwrap();
-        rtc.enable_interrupts(rtc::Interrupts {
-            wakeup_timer: true,
-            ..rtc::Interrupts::default()
-        });
 
-        // Listen for RTC wakeup timer interrupt requests
-        exti.listen_configurable(exti::ConfigurableLine::RtcWakeup, exti::TriggerEdge::Rising);
+        use crate::rtc::RtcInt as _;
+        rtc.enable_wakeup_interrupt(&mut exti);
 
         // Start wakeup timer to update watch face every second
         rtc.wakeup_timer().start(1_u32);
@@ -105,12 +105,13 @@ mod app {
             Shared {
                 pwr,
                 rcc,
+                rtc,
                 scb: cp.SCB,
                 buzzer_enabled: true,
                 temperature: Temperature::default(),
                 voltage: Voltage::default(),
             },
-            Local { rtc, adc, buzzer },
+            Local { adc, buzzer },
         )
     }
 
@@ -139,22 +140,32 @@ mod app {
         loop {}
     }
 
-    #[task(binds = RTC, local = [rtc], shared = [buzzer_enabled])]
+    #[task(binds = RTC, shared = [rtc, buzzer_enabled])]
     fn wakeup(cx: wakeup::Context) {
         defmt::info!("rtc wakeup");
 
-        let rtc = cx.local.rtc;
+        let mut time = rtc::NaiveDateTime::default();
+        let mut rtc = cx.shared.rtc;
 
-        // Clear interrupt
-        rtc.wakeup_timer().wait().unwrap();
+        rtc.lock(|rtc| {
+            // Clear interrupt
+            rtc.wakeup_timer().wait().unwrap();
+            time = rtc.now();
+        });
 
-        let time = rtc.now();
+        use stm32l0xx_hal::rtc::Timelike as _;
 
         // Sound the buzzer on the top of the hour if enabled
-        use stm32l0xx_hal::rtc::Timelike as _;
         if *cx.shared.buzzer_enabled && time.minute() == 0 && time.second() == 0 {
-            if let Err(()) = beep::spawn() {
+            if let Err(_) = beep::spawn() {
                 defmt::error!("unable to spawn beep, already running");
+            }
+        }
+
+        // Calibrate the crystal every 15 minutes
+        if time.minute() % 15 == 0 && time.second() == 0 {
+            if let Err(_) = calibrate::spawn() {
+                defmt::error!("unable to spawn calibrate, already running");
             }
         }
     }
@@ -206,5 +217,13 @@ mod app {
 
             defmt::info!("Temperature {}°C, Battery voltage {}V", *temp, *volt);
         });
+    }
+
+    #[task(priority = 2, shared = [rtc, temperature])]
+    async fn calibrate(cx: calibrate::Context) {
+        defmt::info!("rtc calibrate");
+
+        let _rtc = cx.shared.rtc;
+        // XXX: Waiting for rtc calibration to be implemented in hal
     }
 }

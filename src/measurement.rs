@@ -1,6 +1,6 @@
-use core::ops::Deref;
 use core::default::Default;
-use stm32l0xx_hal::calibration::{VtempCal30, VtempCal130, VrefintCal};
+use core::ops::Deref;
+use stm32l0xx_hal::calibration::{VrefintCal, VtempCal130, VtempCal30};
 
 /// An ADC temperature reading
 pub struct Temperature(u16);
@@ -29,7 +29,6 @@ impl Default for Temperature {
         Self(0)
     }
 }
-
 
 /// An ADC voltage reading
 pub struct Voltage(u16);
