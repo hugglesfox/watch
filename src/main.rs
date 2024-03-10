@@ -36,10 +36,7 @@ mod app {
     #[shared]
     struct Shared {
         // Peripherals
-        pwr: PWR,
-        rcc: Rcc,
         rtc: Rtc,
-        scb: SCB,
 
         // State
         /// Whether buzzer is allowed to sound (toggable with the alarm button)
@@ -51,6 +48,9 @@ mod app {
     struct Local {
         adc: Adc<adc::Ready>,
         buzzer: Buzzer,
+        pwr: PWR,
+        rcc: Rcc,
+        scb: SCB,
     }
 
     #[init]
@@ -104,36 +104,39 @@ mod app {
 
         (
             Shared {
-                pwr,
-                rcc,
                 rtc,
-                scb: cp.SCB,
                 buzzer_enabled: true,
             },
-            Local { adc, buzzer },
+
+            Local { 
+                adc,
+                buzzer,
+                pwr,
+                rcc,
+                scb: cp.SCB,
+            },
         )
     }
 
-    #[idle(shared = [pwr, scb, rcc])]
+    #[idle(local = [pwr, scb, rcc])]
     fn idle(cx: idle::Context) -> ! {
         defmt::info!("idle");
 
-        let pwr = cx.shared.pwr;
-        let scb = cx.shared.scb;
-        let rcc = cx.shared.rcc;
+        let pwr = cx.local.pwr;
+        let scb = cx.local.scb;
+        let rcc = cx.local.rcc;
 
-        (pwr, scb, rcc).lock(|pwr, mut scb, mut rcc| {
-            defmt::info!("entering stop mode");
-            // ULP needs to be disabled for the LCD to work
-            pwr.stop_mode(
-                &mut scb,
-                &mut rcc,
-                pwr::StopModeConfig {
-                    ultra_low_power: false,
-                },
-            )
-            .enter();
-        });
+        defmt::info!("entering stop mode");
+
+        // ULP needs to be disabled for the LCD to work
+        pwr.stop_mode(
+            scb,
+            rcc,
+            pwr::StopModeConfig {
+                ultra_low_power: false,
+            },
+        )
+        .enter();
 
         // Should never be reached
         loop {}
