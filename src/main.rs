@@ -45,8 +45,6 @@ mod app {
         /// Whether buzzer is allowed to sound (toggable with the alarm button)
         #[lock_free]
         buzzer_enabled: bool,
-        temperature: Temperature,
-        voltage: Voltage,
     }
 
     #[local]
@@ -101,6 +99,9 @@ mod app {
         // Start wakeup timer to update watch face every second
         rtc.wakeup_timer().start(1_u32);
 
+        // Start calibration task
+        calibrate::spawn().unwrap();        
+
         (
             Shared {
                 pwr,
@@ -108,8 +109,6 @@ mod app {
                 rtc,
                 scb: cp.SCB,
                 buzzer_enabled: true,
-                temperature: Temperature::default(),
-                voltage: Voltage::default(),
             },
             Local { adc, buzzer },
         )
@@ -161,13 +160,6 @@ mod app {
                 defmt::error!("unable to spawn beep, already running");
             }
         }
-
-        // Calibrate the crystal every 15 minutes
-        if time.minute() % 15 == 0 && time.second() == 0 {
-            if let Err(_) = calibrate::spawn() {
-                defmt::error!("unable to spawn calibrate, already running");
-            }
-        }
     }
 
     /// Toggle `buzzer_enabled` every time the alarm button is pressed
@@ -195,35 +187,26 @@ mod app {
         buzzer.disable();
     }
 
-    #[task(priority = 2, local = [adc], shared = [temperature, voltage])]
-    async fn measure(cx: measure::Context) {
-        defmt::info!("adc measure");
+    #[task(priority = 2, local = [adc], shared = [rtc])]
+    async fn calibrate(cx: calibrate::Context) {
+        defmt::info!("calibrate rtc");
         let adc = cx.local.adc;
 
-        let temperature = cx.shared.temperature;
-        let voltage = cx.shared.voltage;
-
         let mut vtemp = VTemp::new();
-        let mut vref = VRef::new();
 
-        vtemp.enable(adc);
-        vref.enable(adc);
+        loop {
+            defmt::info!("starting an rtc calibration");
+            vtemp.enable(adc);
+            adc.calibrate().unwrap();
 
-        adc.calibrate().unwrap();
+            let temp: Temperature = adc.read(&mut vtemp).unwrap();
+            defmt::info!("Temperature {}°C", *temp);
 
-        (temperature, voltage).lock(|temp, volt| {
-            *temp = adc.read(&mut vtemp).unwrap();
-            *volt = adc.read(&mut vref).unwrap();
+            vtemp.disable(adc);
 
-            defmt::info!("Temperature {}°C, Battery voltage {}V", *temp, *volt);
-        });
-    }
+            // XXX: Implement setting the rtc calibration values in the hal
 
-    #[task(priority = 2, shared = [rtc, temperature])]
-    async fn calibrate(cx: calibrate::Context) {
-        defmt::info!("rtc calibrate");
-
-        let _rtc = cx.shared.rtc;
-        // XXX: Waiting for rtc calibration to be implemented in hal
+            Systick::delay(ExtU32::minutes(15)).await;
+        }
     }
 }
