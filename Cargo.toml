@@ -12,7 +12,7 @@ embedded-time = "0.12.1"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
 rtic = { version = "2.0.1", features = ["thumbv6-backend", "rtic-monotonics"] }
 rtic-monotonics = { version = "1.5.0", features = ["cortex-m-systick"] }
-stm32l0xx-hal = { version = "0.10.0", features = ["mcu-STM32L053C8Ux", "rt"] }
+stm32l0xx-hal = { git = "https://github.com/stm32-rs/stm32l0xx-hal.git", features = ["mcu-STM32L053C8Ux", "rt"] }
 
 [profile.dev]
 codegen-units = 1
