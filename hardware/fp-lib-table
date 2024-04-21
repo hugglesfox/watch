@@ -1,5 +1,5 @@
 (fp_lib_table
   (version 7)
-  (lib (name "Paw-Connect")(type "KiCad")(uri "${KIPRJMOD}/Paw-Connect")(options "")(descr ""))
   (lib (name "Watch")(type "KiCad")(uri "${KIPRJMOD}/watch.pretty")(options "")(descr ""))
+  (lib (name "MSP430FR6972")(type "KiCad")(uri "${KIPRJMOD}/MSP430FR6972.pretty")(options "")(descr ""))
 )
