@@ -21,4 +21,3 @@ Resources and other works which I have referenced for this project
 - https://hackaday.com/2022/02/24/remoticon-2021-joey-castillo-teaches-old-lcds-new-tricks/
 - https://github.com/joeycastillo/Sensor-Watch
 - https://github.com/carrotIndustries/pluto
-- https://docs.rust-embedded.org/book/
